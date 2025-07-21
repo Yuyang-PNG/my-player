@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>NebulaPlayer 永久弹幕版</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- PWA 配置 -->
+  <link rel="manifest" href="data:application/manifest+json,{
+      &quot;name&quot;:&quot;NebulaPlayer&quot;,
+      &quot;short_name&quot;:&quot;Nebula&quot;,
+      &quot;start_url&quot;:&quot;.&quot;,
+      &quot;display&quot;:&quot;standalone&quot;,
+      &quot;background_color&quot;:&quot;#000&quot;,
+      &quot;theme_color&quot;:&quot;#ff2d55&quot;,
+      &quot;icons&quot;:[{
+        &quot;src&quot;:&quot;data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTkyIiBoZWlnaHQ9IjE5MiIgdmlld0JveD0iMCAwIDE5MiAxOTIiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIxOTIiIGhlaWdodD0iMTkyIiByeD0iNDAiIGZpbGw9IiNGRjJENTUiLz4KPC9zdmc+&quot;,
+        &quot;sizes&quot;:&quot;192x192&quot;,
+        &quot;type&quot;:&quot;image/svg+xml&quot;
+      }]
+    }">
+  <style>
+    html,body{margin:0;height:100%;background:#f5f5f5;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto;font-size:14px;transition:background .3s}
+    body.dark{background:#000;color:#fff}
+    #app{width:100%;height:100%;display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box}
+    #artplayer{width:100%;max-width:900px;border-radius:24px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,.3);position:relative}
+    #dmInput{position:absolute;bottom:70px;left:50%;transform:translateX(-50%);display:none;gap:8px;z-index:60;background:rgba(0,0,0,.55);backdrop-filter:blur(12px);padding:8px 12px;border-radius:12px}
+    #dmInput input{border:none;background:transparent;color:#fff;outline:none;width:160px}
+    #dmSend{background:#ff2d55;border:none;color:#fff;border-radius:8px;padding:4px 10px;cursor:pointer}
+    #landscapeTip{position:fixed;top:0;left:0;right:0;bottom:0;background:#000;color:#fff;display:none;align-items:center;justify-content:center;z-index:999}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="artplayer"></div>
+    <div id="dmInput">
+      <input id="dmText" placeholder="发弹幕" maxlength="30">
+      <input id="dmColor" type="color" value="#ff2d55">
+      <button id="dmSend">发送</button>
+    </div>
+    <div id="landscapeTip">请横屏获得最佳体验</div>
+  </div>
+
+  <!-- 播放器核心 -->
+  <script src="https://cdn.jsdelivr.net/npm/artplayer@5.1.1/dist/artplayer.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/artplayer-plugin-danmuku@5.1.1/dist/artplayer-plugin-danmuku.min.js"></script>
+  <script>
+    /* ===== 1. 视频地址（换成自己的） ===== */
+    const qualities = [
+      { html:'480P', url:'https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_ld_7.m3u8' },
+      { html:'720P', url:'https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_hd_7.m3u8', default:true },
+      { html:'1080P', url:'https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_fhd_7.m3u8' }
+    ];
+    const danmus = [
+      { text:'欢迎来到 NebulaPlayer', time:1, color:'#ff2d55' },
+      { text:'双击左右 ±10 秒', time:3, color:'#00e0ff' }
+    ];
+
+    /* ===== 2. 创建播放器 ===== */
+    const art = new Artplayer({
+      container:'#artplayer',
+      url: qualities.find(q=>q.default).url,
+      poster:'https://via.placeholder.com/1280x720/000/fff?text=NebulaPlayer',
+      theme:'#ff2d55',
+      volume:0.5,
+      autoSize:true,
+      screenshot:true,
+      hotkey:true,
+      playbackRate:[0.5,0.75,1,1.25,1.5,2],
+      setting:true,
+      flip:true,
+      fullscreen:true,
+      playsInline:true,
+      quality:qualities,
+      plugins:[ artplayerPluginDanmuku({ danmuku:danmus, speed:8, opacity:0.8, fontSize:22 }) ],
+      storage:{ name:'nebula-v1' }
+    });
+
+    /* ===== 3. 记忆播放 ===== */
+    art.on('ready', ()=>{
+      const t = +localStorage.getItem('nebula-time') || 0;
+      if(t && t<art.duration-1) art.seek = t;
+    });
+    art.on('video:timeupdate', ()=>localStorage.setItem('nebula-time', art.currentTime));
+
+    /* ===== 4. 弹幕发送 ===== */
+    const dmInput = document.getElementById('dmInput');
+    const dmText  = document.getElementById('dmText');
+    const dmColor = document.getElementById('dmColor');
+    const dmSend  = document.getElementById('dmSend');
+
+    art.on('focus', ()=>dmInput.style.display='flex');
+    art.on('blur', ()=>dmInput.style.display='none');
+    dmSend.onclick = ()=>{
+      const txt = dmText.value.trim();
+      if(!txt) return;
+      art.plugins.artplayerPluginDanmuku.emit({ txt, color:dmColor.value, time:art.currentTime });
+      dmText.value='';
+    };
+    dmText.addEventListener('keydown', e=>{ if(e.key==='Enter') dmSend.click(); });
+
+    /* ===== 5. 键盘快捷键 ===== */
+    document.addEventListener('keydown', e=>{
+      if(e.target.tagName==='INPUT') return;
+      switch(e.code){
+        case 'Space': e.preventDefault(); art.toggle(); break;
+        case 'ArrowLeft': art.seek = art.currentTime-10; break;
+        case 'ArrowRight': art.seek = art.currentTime+10; break;
+        case 'ArrowUp': art.volume = Math.min(art.volume+0.1,1); break;
+        case 'ArrowDown': art.volume = Math.max(art.volume-0.1,0); break;
+        case 'KeyF': art.fullscreen = !art.fullscreen; break;
+        case 'KeyM': art.muted = !art.muted; break;
+        case 'KeyC': art.plugins.artplayerPluginDanmuku.show = !art.plugins.artplayerPluginDanmuku.show; break;
+      }
+    });
+
+    /* ===== 6. 手机横屏提示 ===== */
+    const tip = document.getElementById('landscapeTip');
+    const check = ()=>{ tip.style.display = (screen.width<600 && window.orientation!==90)?'flex':'none'; };
+    window.addEventListener('orientationchange',check);
+    window.addEventListener('resize',check);
+    check();
+
+    /* ===== 7. PWA ServiceWorker（可选） ===== */
+    if('serviceWorker' in navigator){
+      navigator.serviceWorker.register('data:text/javascript,importScripts("data:text/javascript;charset=utf-8,const CACHE=%27nebula-v1%27;self.addEventListener(%27install%27,e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll([%27/%27]))));self.addEventListener(%27fetch%27,e=>e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request))));")');
+    }
+  </script>
+</body>
+</html>
